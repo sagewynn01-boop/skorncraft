@@ -1,9 +1,10 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 from dotenv import load_dotenv
 import asyncio
+from datetime import datetime, timedelta
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -14,9 +15,6 @@ intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
-
-# Store pending requests (in production, use a database)
-pending_requests = {}
 
 # Store pending requests (in production, use a database)
 pending_requests = {}
@@ -33,6 +31,39 @@ PROFESSION_CHANNELS = {
     'inscriptionist': int(os.getenv('INSCRIPTIONIST_CHANNEL')),
 }
 
+@tasks.loop(hours=24)
+async def cleanup_old_messages():
+    """Delete messages older than 30 days from profession channels."""
+    for profession, channel_id in PROFESSION_CHANNELS.items():
+        try:
+            channel = await bot.fetch_channel(channel_id)
+            now = datetime.utcnow()
+            thirty_days_ago = now - timedelta(days=30)
+            
+            deleted_count = 0
+            async for message in channel.history(oldest_first=True, limit=None):
+                if message.created_at < thirty_days_ago:
+                    try:
+                        await message.delete()
+                        deleted_count += 1
+                    except discord.errors.Forbidden:
+                        print(f'Permission denied deleting message in {profession} channel')
+                        break
+                    except discord.errors.NotFound:
+                        pass  # Message already deleted
+                else:
+                    # Stop when we reach recent messages
+                    break
+            
+            if deleted_count > 0:
+                print(f'Cleaned up {deleted_count} old message(s) from {profession} channel')
+        except Exception as e:
+            print(f'Error cleaning up {profession} channel: {e}')
+
+@cleanup_old_messages.before_loop
+async def before_cleanup():
+    await bot.wait_until_ready()
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
@@ -41,6 +72,8 @@ async def on_ready():
         print(f'Synced {len(synced)} command(s)')
     except Exception as e:
         print(e)
+    if not cleanup_old_messages.is_running():
+        cleanup_old_messages.start()
 
 @bot.tree.command(name='craft', description='Request a crafting order')
 async def craft(interaction: discord.Interaction):
