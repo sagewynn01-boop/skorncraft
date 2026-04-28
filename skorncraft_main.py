@@ -88,7 +88,7 @@ async def on_ready():
         synced = await bot.tree.sync()
         print(f'Synced {len(synced)} command(s)')
     except Exception as e:
-        print(e)
+        print(f'Failed to sync commands: {e}')
     if not cleanup_old_messages.is_running():
         cleanup_old_messages.start()
 
@@ -128,7 +128,11 @@ class CraftView(discord.ui.View):
 
     async def select_callback(self, interaction: discord.Interaction):
         self.profession = interaction.data['values'][0]
-        await interaction.response.send_message(f'Selected profession: {self.profession.capitalize()}\n\nPlease type your character name:')
+        try:
+            await interaction.response.send_message(f'Selected profession: {self.profession.capitalize()}\n\nPlease type your character name:')
+        except Exception as e:
+            print(f'Error responding to interaction: {e}')
+            return
 
         # Wait for character name
         def check(m):
@@ -138,7 +142,11 @@ class CraftView(discord.ui.View):
             msg = await bot.wait_for('message', check=check, timeout=300.0)
             self.character_name = msg.content
 
-            await self.user.send(f'Character name: {self.character_name}\n\nPlease type the item name you want crafted:')
+            try:
+                await self.user.send(f'Character name: {self.character_name}\n\nPlease type the item name you want crafted:')
+            except discord.Forbidden:
+                await interaction.followup.send('Please enable DMs from server members to continue.', ephemeral=True)
+                return
 
             # Wait for item name
             msg2 = await bot.wait_for('message', check=check, timeout=300.0)
@@ -148,7 +156,10 @@ class CraftView(discord.ui.View):
             await self.post_request()
 
         except asyncio.TimeoutError:
-            await self.user.send('Request timed out. Please try again.')
+            try:
+                await self.user.send('Request timed out. Please try again.')
+            except:
+                pass  # DMs might be disabled
 
     async def post_request(self):
         # Get the channel ID from mapping
@@ -176,7 +187,14 @@ class CraftView(discord.ui.View):
 
         # Add claim button
         view = ClaimView(self.user.id, self.profession, self.character_name, self.item_name)
-        message = await channel.send(f'{role.mention if role else ""} New crafting request:', embed=embed, view=view)
+        try:
+            message = await channel.send(f'{role.mention if role else ""} New crafting request:', embed=embed, view=view)
+        except discord.Forbidden:
+            await self.user.send('The bot does not have permission to send messages in the profession channel. Please contact an admin.')
+            return
+        except Exception as e:
+            await self.user.send(f'An error occurred while posting your request: {e}')
+            return
 
         # Store the request
         request_id = f'{self.user.id}_{message.id}'
@@ -189,7 +207,10 @@ class CraftView(discord.ui.View):
             'channel': channel
         }
 
-        await self.user.send('Your request has been posted!')
+        try:
+            await self.user.send('Your request has been posted!')
+        except discord.Forbidden:
+            pass  # DMs might be disabled, but request is posted
 
 class ClaimView(discord.ui.View):
     def __init__(self, requester_id, profession, character, item):
