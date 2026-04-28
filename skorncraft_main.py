@@ -9,6 +9,23 @@ from datetime import datetime, timedelta
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
+# Check for required environment variables
+required_vars = [
+    'DISCORD_TOKEN',
+    'BLACKSMITH_CHANNEL',
+    'TAILOR_CHANNEL',
+    'ALCHEMIST_CHANNEL',
+    'ENCHANTER_CHANNEL',
+    'LEATHERWORKER_CHANNEL',
+    'ENGINEER_CHANNEL',
+    'JEWELCRAFTER_CHANNEL',
+    'INSCRIPTIONIST_CHANNEL'
+]
+
+for var in required_vars:
+    if not os.getenv(var):
+        raise ValueError(f"Missing required environment variable: {var}")
+
 # Bot setup
 intents = discord.Intents.default()
 intents.message_content = True

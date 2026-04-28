@@ -1,0 +1,3 @@
+# filepath: /workspaces/skorncraft/requirements.txt
+discord.py
+python-dotenv
